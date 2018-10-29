@@ -1,0 +1,183 @@
+---
+title: ""
+author: ""
+date: ""
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+    includes:
+        in_header: css/header.html
+
+---
+
+<link rel="stylesheet" href="css/unhcr-bootstrap.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/unhcr-header.css">
+
+
+
+Facebook [Marketing API](https://developers.facebook.com/docs/marketing-api/buying-api/targeting#behaviors)  allows advertisers to target audiences by demographic groups. Facebook ad campaigns have a three-level structure.
+
+An R package [fbRads](https://github.com/daroczig/fbRads) is available to wrap the API and allow for analysis of potential audience that falls within specific targeting criteria. 
+
+Another R package allows to conduct quota sampling via Facebook advertisements: [fbSample](https://github.com/13bzhang/fbsample). This has been used in the paper: [Quota Sampling Using Facebook Advertisements Can Generate Nationally Representative Opinion Estimates](http://qssi.psu.edu/new-faces-papers-2017/zhang-quota-sampling-using-facebook-advertisements).
+
+
+
+# Facebook API  
+
+There are a few document that document how to set up an account to access the API for analysis purpose.
+
+ *  Step 1 : Goto the link ” https://developers.facebook.com/tools/explorer/” . This will open thee FB developer page.
+ 
+ *  Step 2: Change the API Version(Red box in the picture) to “unversioned”
+ 
+ *  Step 3: Click the “Get Access Token” (Green box in the picture).
+ 
+ *  Step 4: Check all the boxes in all three tabs. These are the permissions you are asking from yourself to access. Assuming you do not wish to hide anything from yourself, you can safely check all boxes.
+ 
+ *  Step 5 : Click on the button “Get Access Token”. This token is valid for 2 hours.
+
+
+
+```{r setup, include=FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+mainDir <- getwd()
+
+# https://www.card.com/blog/fbrads-easy-access-facebook%E2%80%99s-marketing-api-r
+
+library(httr)
+
+library(maps)
+library(geosphere)
+library(plyr)
+
+library(sp)
+#install.packages("rworldmap")
+library(rworldmap)
+#install.packages("rgdal")
+library(rgdal) 
+library(ggplot2) 
+library(gpclib)
+
+library(viridis)
+#library(kable)
+library(kableExtra)
+library(DT)
+
+#library(devtools)
+#install_github("dgrtwo/gganimate")
+library(gganimate) # https://github.com/dgrtwo/gganimate
+library(classInt)
+library(tidyverse)
+library(RColorBrewer)
+
+# install.packages("ggalluvial")
+library(ggalluvial)
+
+
+
+Sys.setenv('HTTR_SERVER_PORT' = '1410/')
+
+## external files with connections ID & Token
+#app <- oauth_app('facebook', 'applicationID', 'secretID')
+#User Token
+#token <- 'TOKENID'
+
+source(paste0(mainDir,"/code/credentials.R"))
+
+
+#tkn <- oauth2.0_token( oauth_endpoints('facebook'),
+#                       app,
+#                       scope = 'ads_management',
+#                       type  = 'application/x-www-form-urlencoded',
+#                       cache = FALSE)
+
+#saveRDS(tkn, 'token.rds')
+#tkn <- readRDS('token.rds')
+
+#tkn1 <- tkn$credentials@access_token
+#tkn1 <- as.data.frame(tkn1)
+
+
+#Google knows what you are searching for
+#devtools::install_github('jburkhardt/RAdwords')
+
+#Facebook knows what you like
+#devtools::install_github('cardcorp/fbRads')
+#devtools::install_github('13bzhang/fbsample')
+
+
+library(fbRads)
+library(fbsample)
+
+
+#fbad_init(tkn1)
+#fbad_init(fid, tkn)
+## fbad_init(accountid, token, version = fb_api_most_recent_version())
+accounts <- fbad_get_my_ad_accounts(token, version = '3.2')
+
+#Pick an Ad Account id from the returned list and initialize fbRads to use that Ad Account by default:
+account <- sample(accounts$account_id, 1)
+fbad_init(accountid = account, token = token, version = '3.2')
+
+fb_api_version()
+
+### https://www.facebook.com/adsmanager/creation
+
+
+adTargetingCategory <- fbad_get_search( type = 'adTargetingCategory',  q = 'test')
+
+adTargetingCategory2 <- as.data.frame(adTargetingCategory)
+#str(adTargetingCategory2)
+#names(adTargetingCategory2)
+
+adTargetingCategory2$id <- as.character(adTargetingCategory2$id)
+adTargetingCategory2$name <- as.character(adTargetingCategory2$name)
+adTargetingCategory2$type <- as.character(adTargetingCategory2$type)
+adTargetingCategory2$path <- as.character(adTargetingCategory2$path)
+adTargetingCategory2$description <- as.character(adTargetingCategory2$description)
+adTargetingCategory2$audience_size <- as.character(adTargetingCategory2$audience_size)
+adTargetingCategory2$real_time_cluster <- as.character(adTargetingCategory2$real_time_cluster)
+adTargetingCategory2$country_access <- NULL
+adTargetingCategory2$lifecycle <- as.character(adTargetingCategory2$lifecycle)
+adTargetingCategory2$platform <- as.character(adTargetingCategory2$platform)
+
+
+```
+
+## What topics are covered by the API
+
+```{r}
+d <- as.data.frame(unique(adTargetingCategory2[ ,c("type")]))
+names(d)[1] <- "type"
+
+datatable(d, filter = 'bottom', options = list(pageLength = 10)) %>%
+    formatStyle('type',color = styleInterval(c(0.5, 56), c('black', 'red', 'blue')),
+                backgroundColor = styleInterval(56.5, c('snow', 'lightyellow')),
+                fontWeight = styleInterval(58.0, c('italics', 'bold')))
+
+
+
+```
+
+
+## Specific topics linked to behavior
+
+We can now see targeting categories linked to "live In"
+
+```{r}
+d2 <- adTargetingCategory2[ adTargetingCategory2$type == "behaviors" & grepl("Lived in",adTargetingCategory2$name ), c("name", "description", "audience_size")]
+
+datatable(d2, filter = 'bottom', options = list(pageLength = 10)) %>%
+    formatStyle('name',color = styleInterval(c(0.5, 56), c('black', 'red', 'blue')),
+                backgroundColor = styleInterval(56.5, c('snow', 'lightyellow')),
+                fontWeight = styleInterval(58.0, c('italics', 'bold')))
+
+
+
+```
